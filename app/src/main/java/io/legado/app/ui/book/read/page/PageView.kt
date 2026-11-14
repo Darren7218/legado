@@ -433,10 +433,6 @@ class PageView(context: Context) : FrameLayout(context) {
         renderReaderInfo()
     }
 
-    fun setAutoPager(autoPager: AutoPager?) {
-        binding.contentTextView.setAutoPager(autoPager)
-    }
-
     fun submitRenderTask() {
         binding.contentTextView.submitRenderTask()
     }
@@ -455,6 +451,10 @@ class PageView(context: Context) : FrameLayout(context) {
 
     fun isAtChapterTop(): Boolean {
         return binding.contentTextView.isAtChapterTop()
+    }
+
+    fun isAtBookEnd(): Boolean {
+        return binding.contentTextView.isAtBookEnd()
     }
 
     /**

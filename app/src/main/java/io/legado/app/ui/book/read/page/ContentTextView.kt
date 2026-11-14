@@ -69,7 +69,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val pageFactory get() = callBack.pageFactory
     private val pageDelegate get() = callBack.pageDelegate
     private var pageOffset = 0
-    private var autoPager: AutoPager? = null
     private var isScroll = false
     private val renderRunnable by lazy { Runnable { preRenderPage() } }
     private var lastClickTime = 0L
@@ -135,7 +134,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        autoPager?.onDraw(canvas)
         if (longScreenshot) {
             canvas.translate(0f, scrollY.toFloat())
         }
@@ -191,7 +189,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
 
     override fun computeScroll() {
         pageDelegate?.computeScroll()
-        autoPager?.computeOffset()
     }
 
     /**
@@ -279,6 +276,17 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
 
     fun isAtChapterTop(): Boolean {
         return textPage.index == 0 && pageOffset == 0
+    }
+
+    fun isAtBookEnd(): Boolean {
+        if (pageFactory.isRefreshingResources || textPage.isMsgPage) {
+            return false
+        }
+        if (pageFactory.hasNext()) {
+            return false
+        }
+        val minOffset = minOf(0, (ChapterProvider.visibleHeight - textPage.height).toInt())
+        return pageOffset <= minOffset
     }
 
     fun restorePageOffset(chapterPos: Int) {
@@ -1059,9 +1067,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
     }
 
-    fun setAutoPager(autoPager: AutoPager?) {
-        this.autoPager = autoPager
-    }
 
     fun setIsScroll(value: Boolean) {
         isScroll = value

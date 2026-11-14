@@ -14,6 +14,7 @@ import android.text.style.UnderlineSpan
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -68,6 +69,10 @@ class ParagraphReadView @JvmOverloads constructor(
     var onPlayPause: (() -> Unit)? = null
     var onTopItemChanged: ((ParagraphItem) -> Unit)? = null
     var onUserScroll: (() -> Unit)? = null
+    var onAutoScrollTouchStateChanged: ((Boolean) -> Unit)? = null
+
+    private var isTouchDown = false
+    private var isUserScrollActive = false
 
     private val layoutManager = LinearLayoutManager(context)
     private val list = RecyclerView(context)
@@ -149,6 +154,8 @@ class ParagraphReadView @JvmOverloads constructor(
             }
 
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                isUserScrollActive = newState != RecyclerView.SCROLL_STATE_IDLE
+                notifyAutoScrollTouchState()
                 if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
                     beginUserScroll()
                 }
@@ -357,12 +364,45 @@ class ParagraphReadView @JvmOverloads constructor(
         list.smoothScrollBy(0, (list.height - list.paddingTop).coerceAtLeast(1) * if (forward) 1 else -1)
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            isTouchDown = true
+            notifyAutoScrollTouchState()
+        }
+        return try {
+            super.dispatchTouchEvent(ev)
+        } finally {
+            if (ev.actionMasked == MotionEvent.ACTION_UP ||
+                ev.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                isTouchDown = false
+                notifyAutoScrollTouchState()
+            }
+        }
+    }
+
+    private fun notifyAutoScrollTouchState() {
+        onAutoScrollTouchStateChanged?.invoke(isTouchDown || isUserScrollActive)
+    }
+
     fun scrollByPixels(distance: Int) {
         if (distance == 0) return
         beginUserScroll()
         list.scrollBy(0, distance)
         reportTopItem()
         scrollState.onIdle()
+    }
+
+    fun autoScrollStep(distance: Int): Boolean {
+        if (distance <= 0) return true
+        if (!list.canScrollVertically(1)) return false
+        list.scrollBy(0, distance)
+        return true
+    }
+
+    fun autoViewportHeight(): Int {
+        val listHeight = list.height - list.paddingTop - list.paddingBottom
+        return (if (listHeight > 0) listHeight else height).coerceAtLeast(0)
     }
 
     fun reportTopItem() {

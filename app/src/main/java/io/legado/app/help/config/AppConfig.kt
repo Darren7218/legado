@@ -1034,6 +1034,24 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.mangaAutoPageSpeed, value)
         }
 
+    var mangaAutoScrollSpeed
+        get() = appCtx.getPrefInt(PreferKey.mangaAutoScrollSpeed, 5).coerceIn(1, 20)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.mangaAutoScrollSpeed, value.coerceIn(1, 20))
+        }
+
+    var autoReadTimedPageTurn
+        get() = appCtx.getPrefBoolean(PreferKey.autoReadTimedPageTurn, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.autoReadTimedPageTurn, value)
+        }
+
+    var autoReadStopAtChapterEnd
+        get() = appCtx.getPrefBoolean(PreferKey.autoReadStopAtChapterEnd, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.autoReadStopAtChapterEnd, value)
+        }
+
     //漫画页脚配置
     var mangaFooterConfig
         get() = appCtx.getPrefString(PreferKey.mangaFooterConfig, "")

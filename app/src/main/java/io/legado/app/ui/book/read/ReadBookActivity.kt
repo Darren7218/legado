@@ -110,11 +110,13 @@ import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TITLE_COLOR
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TITLE_NUMBER_COLOR
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_COLOR
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_DIVIDER_COLOR
+import io.legado.app.ui.book.read.page.AutoReadController
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.ReadView
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegate
 import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.ui.book.read.page.entities.TextPage
+import io.legado.app.ui.book.read.paragraph.ParagraphAutoScroller
 import io.legado.app.ui.book.read.paragraph.ParagraphItem
 import io.legado.app.ui.book.read.paragraph.ParagraphReadView
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
@@ -209,13 +211,15 @@ class ReadBookActivity : BaseReadBookActivity(),
     private val tocActivity =
         registerForActivityResult(TocActivityResult()) {
             it?.let {
+                val chapterIndex = it[0] as Int
+                activeAutoReadController.onChapterSelected(chapterIndex)
                 val highlightLayoutTitleLength =
                     (it[TocActivityResult.HIGHLIGHT_LAYOUT_TITLE_LENGTH_INDEX] as Int)
                         .takeUnless { titleLength ->
                             titleLength == TocActivityResult.NO_HIGHLIGHT_LAYOUT_TITLE_LENGTH
                         }
                 viewModel.openChapter(
-                    it[0] as Int,
+                    chapterIndex,
                     it[1] as Int,
                     highlightLayoutTitleLength,
                     (it[TocActivityResult.HIGHLIGHT_ANCHOR_TEXT_INDEX] as String)
@@ -297,7 +301,21 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var readerOverflowPopup: PopupAction? = null
     override val isInitFinish: Boolean get() = viewModel.isInitFinish
     override val isScroll: Boolean get() = binding.readView.isScroll
-    private val isAutoPage get() = binding.readView.isAutoPage
+    private val paragraphAutoScroller by lazy {
+        ParagraphAutoScroller(
+            view = binding.paragraphReadView,
+            hasNextChapter = { ReadBook.durChapterIndex < ReadBook.simulatedChapterSize - 1 },
+            requestNextChapter = {
+                ReadBook.moveToNextChapter(upContent = true, syncReadAloudFollow = false)
+            },
+            onStopRequested = { autoPageStop() },
+            onStateChanged = { upAutoPageScreenState() },
+        )
+    }
+    private val activeAutoReadController: AutoReadController
+        get() = if (paragraphModeActive) paragraphAutoScroller else binding.readView.autoPager
+    private val isAutoPage
+        get() = activeAutoReadController.isRunning
     override var isShowingSearchResult = false
     override var isSelectingSearchResult = false
         set(value) {
@@ -373,6 +391,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         val enabled = AppConfig.paragraphReadMode
         val changed = paragraphModeActive != enabled
         if (changed) {
+            autoPageStop()
             if (paragraphModeActive) binding.paragraphReadView.reportTopItem()
             else binding.readView.updateScrollReadPosition(preserveText = true)
             binding.readView.cancelTouchGestures()
@@ -390,7 +409,6 @@ class ReadBookActivity : BaseReadBookActivity(),
             View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         } else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         if (enabled) {
-            if (changed) autoPageStop()
             binding.paragraphReadView.upStyle()
             renderParagraphContent()
         } else if (changed) binding.readView.upContent(resetPageOffset = true)
@@ -417,6 +435,12 @@ class ReadBookActivity : BaseReadBookActivity(),
         val view = binding.paragraphReadView
         if (ReadBook.msg != null || chapter == null || !chapter.isCompleted) {
             view.showMessage(ReadBook.msg ?: getString(R.string.loading))
+            if (ReadBook.msg != null) {
+                paragraphAutoScroller.onChapterRendered(
+                    hasContent = false,
+                    chapterIndex = ReadBook.durChapterIndex,
+                )
+            }
             return
         }
         val position = ReadBook.durChapterPos
@@ -432,6 +456,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         paragraphRenderedPosition = position
         view.updateControls()
         updateParagraphReadAloudHighlight()
+        paragraphAutoScroller.onChapterRendered(
+            hasContent = true,
+            chapterIndex = chapter.chapter.index,
+        )
     }
 
     private fun updateParagraphReadAloudHighlight() {
@@ -571,6 +599,9 @@ class ReadBookActivity : BaseReadBookActivity(),
                     updateReadAloudFloatBar()
                 }
             }
+            onAutoScrollTouchStateChanged = { paused ->
+                paragraphAutoScroller.setTouchPaused(paused)
+            }
         }
         updateParagraphMode()
         @Suppress("DEPRECATION")
@@ -706,6 +737,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
         }
         paragraphAloudOnPause = false
+        binding.readView.autoPager.setLifecyclePaused(false)
+        paragraphAutoScroller.setLifecyclePaused(false)
+        upAutoPageScreenState()
         updateReadAloudFloatBar()
         screenOffTimerStart()
         // 网络监听，当从无网切换到网络环境时同步进度（注意注册的同时就会收到监听，因此界面激活时无需重复执行同步操作）
@@ -742,7 +776,13 @@ class ReadBookActivity : BaseReadBookActivity(),
         paragraphReaderSession = 0L
         super.onPause()
         binding.readView.cancelTouchGestures()
-        autoPageStop()
+        if (isAutoPage) {
+            binding.readView.autoPager.setTouchPaused(false)
+            binding.readView.autoPager.setLifecyclePaused(true)
+            paragraphAutoScroller.setTouchPaused(false)
+            paragraphAutoScroller.setLifecyclePaused(true)
+            upScreenTimeOut()
+        }
         backupJob?.cancel()
         binding.readView.updateScrollReadPosition()
         ReadBook.saveRead()
@@ -2061,25 +2101,74 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 自动翻页
      */
     override fun autoPage() {
-        if (paragraphModeActive) return
         ReadAloud.stop(this)
         if (isAutoPage) {
             autoPageStop()
         } else {
-            binding.readView.autoPager.start()
-            binding.readMenu.setAutoPage(true)
-            screenTimeOut = -1L
-            screenOffTimerStart()
+            if (paragraphModeActive) {
+                paragraphAutoScroller.start()
+            } else {
+                binding.readView.autoPager.start()
+            }
+            upAutoPageScreenState()
         }
     }
 
     override fun autoPageStop() {
-        if (isAutoPage) {
+        var stopped = false
+        if (binding.readView.isAutoPage) {
             binding.readView.autoPager.stop()
-            binding.readMenu.setAutoPage(false)
+            stopped = true
+        }
+        if (paragraphAutoScroller.isRunning) {
+            paragraphAutoScroller.stop()
+            stopped = true
+        }
+        if (stopped) {
             dismissDialogFragment<AutoReadDialog>()
+            upAutoPageScreenState()
+        }
+    }
+
+    private fun upAutoPageScreenState() {
+        binding.readMenu.setAutoPage(isAutoPage)
+        val userPaused = activeAutoReadController.isUserPaused
+        if (isAutoPage && !userPaused) {
+            screenTimeOut = -1L
+            screenOffTimerStart()
+        } else {
             upScreenTimeOut()
         }
+    }
+
+    override fun onAutoReadConfigChanged() {
+        activeAutoReadController.refreshConfig()
+    }
+
+    override fun toggleAutoReadPause() {
+        val controller = activeAutoReadController
+        controller.setUserPaused(!controller.isUserPaused)
+        upAutoPageScreenState()
+    }
+
+    override fun isAutoReadUserPaused(): Boolean = activeAutoReadController.isUserPaused
+
+    override fun setAutoReadSleepTimer(minutes: Int) {
+        activeAutoReadController.setSleepTimerMinutes(minutes)
+    }
+
+    override fun remainingAutoReadSleepMs(): Long = activeAutoReadController.remainingSleepMs()
+
+    override fun supportsTimedPageTurn(): Boolean {
+        return !paragraphModeActive && !binding.readView.isScroll && !AppConfig.isEInkMode
+    }
+
+    override fun supportsPageAnimConfig(): Boolean = !paragraphModeActive
+
+    override fun onAutoPageAnimChanged() {
+        binding.readView.upPageAnim()
+        ReadBook.loadContent(false)
+        onAutoReadConfigChanged()
     }
 
     override fun openSourceEditActivity() {
@@ -2713,11 +2802,11 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 朗读按钮
      */
     override fun onClickReadAloud() {
+        autoPageStop()
         if (paragraphModeActive) {
             playParagraph()
             return
         }
-        autoPageStop()
         when {
             !BaseReadAloudService.isRun -> {
                 ReadAloud.upReadAloudClass()
@@ -2931,6 +3020,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     /* 进度条跳转到指定章节 */
     override fun skipToChapter(index: Int) {
         ReadBook.saveCurrentBookProgress() //退出章节跳转恢复此时进度
+        activeAutoReadController.onChapterSelected(index)
         viewModel.openChapter(index)
     }
 
@@ -2941,12 +3031,14 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onMenuShow() {
-        binding.readView.autoPager.pause()
+        binding.readView.autoPager.setMenuPaused(true)
+        paragraphAutoScroller.setMenuPaused(true)
         updateReadAloudFloatBar(menuShowing = true)
     }
 
     override fun onMenuHide() {
-        if (!paragraphModeActive) binding.readView.autoPager.resume()
+        binding.readView.autoPager.setMenuPaused(false)
+        paragraphAutoScroller.setMenuPaused(false)
         aloudControls.reveal()
         updateReadAloudFloatBar(menuHiding = true)
     }
@@ -2973,6 +3065,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         val generation = ++searchJumpGeneration
         searchJumpJob?.cancel()
         if (searchResult.chapterIndex != ReadBook.durChapterIndex) {
+            activeAutoReadController.onChapterSelected(searchResult.chapterIndex)
             viewModel.openChapter(searchResult.chapterIndex) {
                 if (generation == searchJumpGeneration) jumpToPosition(searchResult, generation)
             }
@@ -3248,6 +3341,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onDestroy() {
+        binding.readView.autoPager.stop()
+        paragraphAutoScroller.stop()
         if (ReadBook.paragraphReaderVisibleSession == paragraphReaderSession) {
             ReadBook.paragraphReaderVisibleSession = 0L
         }

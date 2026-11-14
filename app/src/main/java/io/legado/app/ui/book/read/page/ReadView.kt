@@ -273,7 +273,21 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
     override fun computeScroll() {
         pageDelegate?.computeScroll()
-        autoPager.computeOffset()
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            autoPager.setTouchPaused(true)
+        }
+        return try {
+            super.dispatchTouchEvent(ev)
+        } finally {
+            if (ev.actionMasked == MotionEvent.ACTION_UP ||
+                ev.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                autoPager.setTouchPaused(false)
+            }
+        }
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
@@ -449,7 +463,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 resetPullBookmarkGesture()
                 if (wasPullingBookmark) {
                     pressOnTextSelected = false
-                    autoPager.resume()
                     return true
                 }
                 if (isTextSelected) {
@@ -458,7 +471,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     pageDelegate?.onTouch(event)
                 }
                 pressOnTextSelected = false
-                autoPager.resume()
             }
         }
         return true
@@ -978,12 +990,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
             autoPager.upRecorder()
         }
         pageDelegate?.setViewSize(width, height)
-        if (isScroll) {
-            curPage.setAutoPager(autoPager)
-        } else {
-            curPage.setAutoPager(null)
-        }
         curPage.setIsScroll(isScroll)
+        autoPager.refreshConfig()
     }
 
     /**
@@ -998,7 +1006,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         post {
             curPage.setContentDescription(pageFactory.curPage.text)
         }
-        if (isScroll && !isAutoPage) {
+        if (isScroll) {
             if (relativePosition == 0) {
                 curPage.setContent(
                     pageFactory.curPage,
@@ -1013,11 +1021,15 @@ class ReadView(context: Context, attrs: AttributeSet) :
         } else {
             when (relativePosition) {
                 -1 -> prevPage.setContent(pageFactory.prevPage)
-                1 -> nextPage.setContent(pageFactory.nextPage)
+                1 -> {
+                    nextPage.setContent(pageFactory.nextPage)
+                    autoPager.invalidatePreview()
+                }
                 else -> {
                     curPage.setContent(pageFactory.curPage, resetPageOffset)
                     nextPage.setContent(pageFactory.nextPage)
                     prevPage.setContent(pageFactory.prevPage)
+                    autoPager.invalidatePreview()
                 }
             }
         }

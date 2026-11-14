@@ -1755,4 +1755,16 @@
     <string name="content_search_scope_up">向上</string>
     <string name="content_search_anchor_unavailable">正文处理后无法可靠定位当前阅读位置。请返回阅读页重试，或切换为全局搜索。</string>
     <string name="content_search_result_unavailable">无法在阅读正文中可靠定位此结果。请检查替换净化和标题设置后重新搜索。</string>
+    <string name="auto_scroll_speed_seconds">%1$d秒 / 屏</string>
+    <string name="auto_scroll_slower">减速</string>
+    <string name="auto_scroll_faster">加速</string>
+    <string name="auto_scroll_timed_page">定时翻页</string>
+    <string name="auto_scroll_stop_chapter_end">本章结束停止</string>
+    <string name="auto_scroll_timer">定时停止</string>
+    <string name="auto_scroll_timer_off">关闭</string>
+    <string name="auto_scroll_timer_minutes">%1$d 分钟</string>
+    <string name="auto_scroll_stopped_chapter_end">本章结束，已停止自动滚动</string>
+    <string name="auto_scroll_stopped_timer">定时时间到，已停止自动滚动</string>
+    <string name="manga_auto_scroll_speed">滚动速度 %1$d</string>
+    <string name="setting_manga_auto_scroll_speed">设置自动滚动速度 (1–20)</string>
 </resources>

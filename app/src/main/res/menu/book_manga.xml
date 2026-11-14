@@ -77,6 +77,12 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_manga_auto_scroll_speed"
+        android:title="@string/manga_auto_scroll_speed"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_enable_horizontal_scroll"
         android:checkable="true"
         android:checked="false"

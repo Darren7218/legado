@@ -306,4 +306,7 @@ object PreferKey {
     const val editAutoComplete = "editAutoComplete"
     const val showBoardLine = "showBoardLine"
     const val bottomBarSkin = "bottomBarSkin"
+    const val autoReadTimedPageTurn = "autoReadTimedPageTurn"
+    const val autoReadStopAtChapterEnd = "autoReadStopAtChapterEnd"
+    const val mangaAutoScrollSpeed = "mangaAutoScrollSpeed"
 }
