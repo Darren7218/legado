@@ -1880,4 +1880,11 @@
     <string name="auto_scroll_stopped_timer">Auto scroll timer ended</string>
     <string name="manga_auto_scroll_speed">Scroll speed %1$d</string>
     <string name="setting_manga_auto_scroll_speed">Set auto scroll speed (1–20)</string>
+    <string name="verification_banner_ready">Complete verification on the page, then tap Done.</string>
+    <string name="verification_banner_challenge">Security check active. Complete it on the page and wait, or tap Done once finished.</string>
+    <string name="verification_banner_verifying">Saving cookies and verifying page…</string>
+    <string name="verification_banner_failed">Verification check failed: %1$s. Finish any check on the page and try again.</string>
+    <string name="verification_banner_failed_no_detail">Verification check failed. Finish any check on the page and try again.</string>
+    <string name="verification_back_retry_hint">Verification failed; finish the check or press Back again to close</string>
+    <string name="verification_done_action">Done</string>
 </resources>

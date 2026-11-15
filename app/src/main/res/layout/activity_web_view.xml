@@ -23,7 +23,7 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             app:layout_constraintTop_toBottomOf="@+id/title_bar"
-            app:layout_constraintBottom_toBottomOf="parent" />
+            app:layout_constraintBottom_toTopOf="@+id/ll_verification_bar" />
 
         <io.legado.app.ui.widget.anima.RefreshProgressBar
             android:id="@+id/progress_bar"
@@ -31,6 +31,66 @@
             android:layout_height="1dp"
             app:max_progress="100"
             app:layout_constraintTop_toTopOf="@id/web_view_container" />
+
+        <LinearLayout
+            android:id="@+id/ll_verification_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/background_card"
+            android:orientation="vertical"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/bg_divider_line" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:minHeight="48dp"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingEnd="8dp">
+
+                <ProgressBar
+                    android:id="@+id/pb_verification"
+                    style="?android:attr/progressBarStyleSmall"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginEnd="8dp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/tv_verification_status"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:paddingVertical="8dp"
+                    android:text="@string/verification_banner_ready"
+                    android:textColor="@color/primaryText"
+                    android:textSize="13sp" />
+
+                <io.legado.app.ui.widget.text.AccentTextView
+                    android:id="@+id/btn_verification_done"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minWidth="64dp"
+                    android:minHeight="48dp"
+                    android:paddingHorizontal="12dp"
+                    android:text="@string/verification_done_action"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+
+        </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

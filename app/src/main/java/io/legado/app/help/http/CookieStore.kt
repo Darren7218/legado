@@ -40,13 +40,15 @@ object CookieStore : CookieManagerInterface {
 
     fun setWebCookie(url: String, cookie: String) {
         try {
-            val baseUrl = NetworkUtils.getBaseUrl(url) ?: return
+            val cleanUrl = WebViewCookieSync.stripUrlOptions(url) ?: url
+            val baseUrl = NetworkUtils.getBaseUrl(cleanUrl) ?: return
             val cookies = cookie.splitNotBlank(";")
             val cookieManager = android.webkit.CookieManager.getInstance()
             cookieManager.removeSessionCookies(null)
             cookies.forEach {
                 cookieManager.setCookie(baseUrl, it)
             }
+            cookieManager.flush()
         } catch (e: Exception) {
             AppLog.put("设置WebCookie失败\n$e", e)
         }

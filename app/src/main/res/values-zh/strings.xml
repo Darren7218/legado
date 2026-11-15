@@ -1767,4 +1767,11 @@
     <string name="auto_scroll_stopped_timer">定时时间到，已停止自动滚动</string>
     <string name="manga_auto_scroll_speed">滚动速度 %1$d</string>
     <string name="setting_manga_auto_scroll_speed">设置自动滚动速度 (1–20)</string>
+    <string name="verification_banner_ready">请在页面完成验证，完成后点击“完成”。</string>
+    <string name="verification_banner_challenge">检测到安全验证，请在页面完成验证，完成后可等待自动返回或点击“完成”。</string>
+    <string name="verification_banner_verifying">正在保存 Cookie 并确认验证结果…</string>
+    <string name="verification_banner_failed">验证结果确认失败：%1$s。请在页面完成验证后重试。</string>
+    <string name="verification_banner_failed_no_detail">验证结果确认失败，请在页面完成验证后重试。</string>
+    <string name="verification_back_retry_hint">验证未通过：请完成验证后再试，或再次返回退出</string>
+    <string name="verification_done_action">完成</string>
 </resources>

@@ -7,7 +7,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.AndroidRuntimeException
 import android.webkit.ConsoleMessage
-import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -200,8 +199,7 @@ class BackstageWebView(
     private fun setCookie(url: String) {
         tag?.let {
             Coroutine.async(executeContext = IO) {
-                val cookie = CookieManager.getInstance().getCookie(url)
-                CookieStore.setCookie(it, cookie)
+                WebViewCookieSync.syncFromWebViewToTarget(it, url)
             }
         }
     }

@@ -99,6 +99,7 @@ object WebViewPool {
             clearMatches() //清除查找匹配项
             clearDisappearingChildren() //清除消失中的子视图
             clearAnimation() //清除动画
+            io.legado.app.help.http.WebViewCookieSync.enableThirdPartyCookies(this, false)
             pooledWebView.upContext(appCtx)
             if (idlePool.size >= CACHED_WEB_VIEW_MAX_NUM - inUsePool.size) {
                 // 池子已满，直接销毁

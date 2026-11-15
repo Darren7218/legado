@@ -10,9 +10,9 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.webkit.ConsoleMessage
-import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -24,7 +24,7 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.databinding.ActivityWebViewBinding
-import io.legado.app.help.http.CookieStore
+import io.legado.app.help.http.WebViewCookieSync
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.lib.dialogs.SelectItem
@@ -42,6 +42,7 @@ import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
@@ -85,6 +86,8 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var customWebViewCallback: WebChromeClient.CustomViewCallback? = null
     private var webPic: String? = null
     private var isCloudflareChallenge = false
+    private var verificationFailedOnce = false
+    private var hasMainFrameLoadError = false
     private var isFullScreen = false
     private var isWebFullscreen = false
     private var orientationBeforeWebFullscreen: Int? = null
@@ -99,6 +102,11 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     }
 
     private fun refresh() {
+        verificationFailedOnce = false
+        hasMainFrameLoadError = false
+        if (!viewModel.isSavingVerification) {
+            updateVerificationBanner(VerificationBannerState.READY)
+        }
         currentWebView.reload()
     }
 
@@ -107,6 +115,12 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             val typeMask = WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()
             view.bottomPadding = windowInsets.getInsets(typeMask).bottom
             windowInsets
+        }
+        binding.titleBar.setNavigationOnClickListener {
+            close()
+        }
+        binding.btnVerificationDone.setOnClickListener {
+            submitVerificationResult()
         }
         pooledWebView = WebViewPool.acquire(this)
         currentWebView = pooledWebView.realWebView
@@ -125,6 +139,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         binding.titleBar.title = intent.getStringExtra("title") ?: getString(R.string.loading)
         binding.titleBar.subtitle = intent.getStringExtra("sourceName")
         viewModel.initData(intent) {
+            updateVerificationBanner(VerificationBannerState.READY)
             val url = viewModel.baseUrl
             val headerMap = viewModel.headerMap
             val requestConfig = headerMap.toWebViewRequestConfig(AppConfig.userAgent)
@@ -157,7 +172,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                 val list = currentWebView.copyBackForwardList()
                 val size = list.size
                 if (size == 1) {
-                    finish()
+                    close()
                     return@addCallback
                 }
                 val currentIndex = list.currentIndex
@@ -169,7 +184,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                     val item = list.getItemAtIndex(i)
                     val itemUrl = item.originalUrl
                     if (itemUrl == BLANK_HTML) {
-                        finish()
+                        close()
                         return@addCallback
                     }
                     if (itemUrl != currentUrl || currentTitle != item.title) {
@@ -181,13 +196,13 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                     steps++
                 }
                 if (steps == size) {
-                    finish()
+                    close()
                     return@addCallback
                 }
                 currentWebView.goBackOrForward(-steps)
                 return@addCallback
             }
-            finish()
+            close()
         }
     }
 
@@ -210,15 +225,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             R.id.menu_web_refresh -> refresh()
             R.id.menu_open_in_browser -> openUrl(viewModel.baseUrl)
             R.id.menu_copy_url -> sendToClip(viewModel.baseUrl)
-            R.id.menu_ok -> {
-                if (viewModel.sourceVerificationEnable) {
-                    viewModel.saveVerificationResult(currentWebView) {
-                        finish()
-                    }
-                } else {
-                    finish()
-                }
-            }
+            R.id.menu_ok -> submitVerificationResult()
 
             R.id.menu_full_screen -> toggleFullScreen()
             R.id.menu_show_web_log -> {
@@ -269,6 +276,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             loadWithOverviewMode = true
             userAgentString = userAgent
         }
+        WebViewCookieSync.enableThirdPartyCookies(currentWebView, true)
         AppCookieManager.applyToWebView(url)
         currentWebView.setOnLongClickListener {
             val hitTestResult = currentWebView.hitTestResult
@@ -339,14 +347,78 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     }
 
     private fun close() {
-        if (!isCloudflareChallenge) {
-            if (viewModel.sourceVerificationEnable) {
-                viewModel.saveVerificationResult(currentWebView) {
-                    finish()
+        if (
+            shouldExitImmediatelyOnBack(
+                sourceVerificationEnable = viewModel.sourceVerificationEnable,
+                isCloudflareChallenge = isCloudflareChallenge,
+                isSavingVerification = viewModel.isSavingVerification,
+                verificationFailedOnce = verificationFailedOnce,
+            )
+        ) {
+            finish()
+            return
+        }
+        submitVerificationResult(fromBack = true)
+    }
+
+    private fun submitVerificationResult(fromBack: Boolean = false) {
+        if (!viewModel.sourceVerificationEnable || !::currentWebView.isInitialized) {
+            finish()
+            return
+        }
+        if (viewModel.isSavingVerification) {
+            return
+        }
+        updateVerificationBanner(VerificationBannerState.VERIFYING)
+        viewModel.saveVerificationResult(
+            currentWebView,
+            onError = { error ->
+                if (!isFinishing && !isDestroyed) {
+                    verificationFailedOnce = true
+                    val detail = formatVerificationError(error)
+                    updateVerificationBanner(VerificationBannerState.FAILED, detail)
+                    if (fromBack) {
+                        toastOnUi(R.string.verification_back_retry_hint)
+                    } else {
+                        toastOnUi(
+                            if (detail.isNotEmpty()) {
+                                getString(R.string.verification_banner_failed, detail)
+                            } else {
+                                getString(R.string.verification_banner_failed_no_detail)
+                            }
+                        )
+                    }
                 }
             }
-            else {
-                finish()
+        ) {
+            finish()
+        }
+    }
+
+    private fun updateVerificationBanner(
+        state: VerificationBannerState,
+        errorDetail: String = ""
+    ) {
+        if (!viewModel.sourceVerificationEnable) {
+            binding.llVerificationBar.visibility = View.GONE
+            return
+        }
+        binding.llVerificationBar.visibility = View.VISIBLE
+        val verifying = state == VerificationBannerState.VERIFYING
+        binding.pbVerification.visibility = if (verifying) View.VISIBLE else View.GONE
+        binding.btnVerificationDone.isEnabled = !verifying
+        binding.btnVerificationDone.alpha = if (verifying) 0.5f else 1f
+        binding.tvVerificationStatus.text = when (state) {
+            VerificationBannerState.READY -> getString(R.string.verification_banner_ready)
+            VerificationBannerState.CHALLENGE_ACTIVE ->
+                getString(R.string.verification_banner_challenge)
+            VerificationBannerState.VERIFYING -> getString(R.string.verification_banner_verifying)
+            VerificationBannerState.FAILED -> {
+                if (errorDetail.isNotEmpty()) {
+                    getString(R.string.verification_banner_failed, errorDetail)
+                } else {
+                    getString(R.string.verification_banner_failed_no_detail)
+                }
             }
         }
     }
@@ -514,6 +586,8 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
             hideCustomView()
             pendingWebOrientation = null
+            verificationFailedOnce = false
+            hasMainFrameLoadError = false
             if (needClearHistory) {
                 needClearHistory = false
                 currentWebView.clearHistory() //清除历史
@@ -521,29 +595,58 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             super.onPageStarted(view, url, favicon)
             currentWebView.evaluateJavascript(basicJs, null)
         }
+
+        override fun onReceivedError(
+            view: WebView?,
+            request: WebResourceRequest?,
+            error: WebResourceError?
+        ) {
+            super.onReceivedError(view, request, error)
+            if (request?.isForMainFrame == true &&
+                viewModel.sourceVerificationEnable &&
+                !isFinishing &&
+                !isDestroyed &&
+                !viewModel.isSavingVerification
+            ) {
+                hasMainFrameLoadError = true
+                isCloudflareChallenge = false
+                updateVerificationBanner(
+                    VerificationBannerState.FAILED,
+                    error?.description?.toString().orEmpty()
+                )
+            }
+        }
         
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
             // The document created after onPageStarted may replace its injected globals.
             view?.evaluateJavascript(basicJs, null)
-            val cookieManager = CookieManager.getInstance()
-            url?.let {
-                CookieStore.setCookie(it, cookieManager.getCookie(it))
-            }
-            view?.title?.let { title ->
-                if (title != url && title != view.url && title.isNotBlank()) {
-                    binding.titleBar.title = title
-                } else {
-                    binding.titleBar.title = intent.getStringExtra("title")
+            view?.let {
+                viewModel.syncCookiesFromWebView(it, url)
+            } ?: WebViewCookieSync.syncFromWebView(url, viewModel.baseUrl)
+            val pageTitle = view?.title
+            if (!pageTitle.isNullOrBlank() && pageTitle != url && pageTitle != view.url) {
+                binding.titleBar.title = pageTitle
+            } else {
+                intent.getStringExtra("title")?.let {
+                    binding.titleBar.title = it
                 }
-                view.evaluateJavascript("!!window._cf_chl_opt") {
-                    if (it == "true") {
-                        isCloudflareChallenge = true
-                    } else if (isCloudflareChallenge && viewModel.sourceVerificationEnable) {
-                        viewModel.saveVerificationResult(currentWebView) {
-                            finish()
-                        }
+            }
+            view?.evaluateJavascript("!!window._cf_chl_opt") {
+                if (isFinishing || isDestroyed) return@evaluateJavascript
+                if (it == "true") {
+                    isCloudflareChallenge = true
+                    updateVerificationBanner(VerificationBannerState.CHALLENGE_ACTIVE)
+                } else if (isCloudflareChallenge) {
+                    isCloudflareChallenge = false
+                    if (viewModel.sourceVerificationEnable) {
+                        submitVerificationResult()
                     }
+                } else if (!viewModel.isSavingVerification &&
+                    !verificationFailedOnce &&
+                    !hasMainFrameLoadError
+                ) {
+                    updateVerificationBanner(VerificationBannerState.READY)
                 }
             }
         }

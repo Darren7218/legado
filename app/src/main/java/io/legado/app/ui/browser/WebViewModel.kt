@@ -22,7 +22,6 @@ import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
-import org.apache.commons.text.StringEscapeUtils
 import java.util.Date
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.help.webView.WebJsExtensions.Companion.JS_INJECTION2
@@ -114,39 +113,85 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun saveVerificationResult(webView: WebView, success: () -> Unit) {
+    var isSavingVerification = false
+        private set
+
+    fun syncCookiesFromWebView(webView: WebView, pageUrl: String? = webView.url): Boolean {
+        return io.legado.app.help.http.WebViewCookieSync.syncFromWebView(
+            pageUrl,
+            baseUrl,
+            intent?.getStringExtra("url")
+        )
+    }
+
+    fun saveVerificationResult(
+        webView: WebView,
+        onError: ((Throwable) -> Unit)? = null,
+        success: () -> Unit
+    ) {
         if (!sourceVerificationEnable) {
             return success.invoke()
         }
+        if (isSavingVerification) {
+            return
+        }
+        syncCookiesFromWebView(webView)
         if (refetchAfterSuccess) {
-            execute {
-                val url = intent!!.getStringExtra("url")!!
-                val source = appDb.bookSourceDao.getBookSource(sourceOrigin)
-                if (html == null) {
-                    html = AnalyzeUrl(
-                        url,
-                        headerMapF = headerMap,
-                        source = source,
-                        coroutineContext = coroutineContext
-                    ).getStrResponseAwait(useWebView = false).body
-                }
-                SourceVerificationHelp.setResult(verificationResultKey, html ?: "", baseUrl)
-            }.onSuccess {
-                success.invoke()
+            isSavingVerification = true
+            runVerificationSave(onError, success) {
+                val targetUrl = resolveVerificationTargetUrl(
+                    intent?.getStringExtra("url"),
+                    baseUrl
+                ) ?: throw io.legado.app.exception.NoStackTraceException("Verification URL is missing")
+                val activeSource = source
+                    ?: io.legado.app.help.source.SourceHelp.getSource(sourceOrigin, sourceType)
+                val fetchedHtml = AnalyzeUrl(
+                    targetUrl,
+                    headerMapF = headerMap,
+                    source = activeSource,
+                    coroutineContext = coroutineContext
+                ).getStrResponseAwait(useWebView = false).body ?: ""
+                SourceVerificationHelp.setResult(verificationResultKey, fetchedHtml, baseUrl)
             }
         } else {
-            webView.evaluateJavascript("document.documentElement.outerHTML") {
-                execute {
-                    html = StringEscapeUtils.unescapeJson(it).trim('"')
-                }.onSuccess {
+            isSavingVerification = true
+            webView.evaluateJavascript("document.documentElement.outerHTML") { rawHtml ->
+                val pageUrl = webView.url ?: ""
+                runVerificationSave(onError, success) {
+                    val decodedHtml = decodeEvaluatedHtmlResult(rawHtml)
+                    if (decodedHtml.isBlank()) {
+                        throw NoStackTraceException("Verification page content is empty")
+                    }
+                    html = decodedHtml
                     SourceVerificationHelp.setResult(
                         verificationResultKey,
-                        html ?: "",
-                        webView.url ?: "",
+                        decodedHtml,
+                        pageUrl,
                     )
-                    success.invoke()
                 }
             }
+        }
+    }
+
+    private fun runVerificationSave(
+        onError: ((Throwable) -> Unit)?,
+        success: () -> Unit,
+        block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit,
+    ) {
+        execute {
+            block()
+        }.onSuccess {
+            isSavingVerification = false
+            success.invoke()
+        }.onError { error ->
+            isSavingVerification = false
+            io.legado.app.constant.AppLog.put(
+                "保存验证结果失败\n${error.localizedMessage}",
+                error
+            )
+            onError?.invoke(error)
+        }.onFinally {
+            isSavingVerification = false
         }
     }
 

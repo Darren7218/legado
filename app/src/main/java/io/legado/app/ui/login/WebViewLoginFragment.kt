@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -20,7 +19,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseFragment
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.databinding.FragmentWebViewLoginBinding
-import io.legado.app.help.http.CookieStore
+import io.legado.app.help.http.WebViewCookieSync
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.lib.theme.accentColor
@@ -71,11 +70,22 @@ class WebViewLoginFragment : BaseFragment(R.layout.fragment_web_view_login) {
                     checking = true
                     binding.titleBar.snackbar(R.string.check_host_cookie)
                     viewModel.source?.let {
+                        syncLoginCookies(it, currentWebView?.url)
                         loadUrl(it)
                     }
                 }
             }
         }
+    }
+
+    private fun syncLoginCookies(source: BaseSource, pageUrl: String? = null) {
+        val loginUrl = source.loginUrl?.let { NetworkUtils.getAbsoluteURL(source.getKey(), it) }
+        WebViewCookieSync.syncFromWebViewToTarget(
+            source.getKey(),
+            pageUrl,
+            currentWebView?.url,
+            loginUrl
+        )
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -94,17 +104,15 @@ class WebViewLoginFragment : BaseFragment(R.layout.fragment_web_view_login) {
             loadWithOverviewMode = true
             userAgentString = requestConfig.userAgent
         }
-        val cookieManager = CookieManager.getInstance()
+        WebViewCookieSync.enableThirdPartyCookies(webView, true)
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                val cookie = cookieManager.getCookie(url)
-                CookieStore.setCookie(source.getKey(), cookie)
+                syncLoginCookies(source, url)
                 super.onPageStarted(view, url, favicon)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                val cookie = cookieManager.getCookie(url)
-                CookieStore.setCookie(source.getKey(), cookie)
+                syncLoginCookies(source, url)
                 if (checking) {
                     activity?.finish()
                 }
