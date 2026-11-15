@@ -6,6 +6,7 @@ import org.apache.commons.text.StringEscapeUtils
  * Pure state and URL helpers for manual verification in [WebViewActivity] and [WebViewModel].
  */
 internal enum class VerificationBannerState {
+    LOADING,
     READY,
     CHALLENGE_ACTIVE,
     VERIFYING,

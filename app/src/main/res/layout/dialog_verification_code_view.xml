@@ -36,6 +36,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="@string/verification_code"
+            android:imeOptions="actionDone"
+            android:singleLine="true"
             tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
     </io.legado.app.ui.widget.text.TextInputLayout>

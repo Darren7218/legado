@@ -158,10 +158,34 @@ class WebViewVerificationContractTest {
             "verification_banner_failed_no_detail",
             "verification_back_retry_hint",
             "verification_done_action",
+            "verification_code_empty",
         )
 
         assertTrue(enStrings.containsAll(requiredKeys))
         assertTrue(zhStrings.containsAll(requiredKeys))
+    }
+
+    @Test
+    fun verificationImprovementsPreserveSessionOverridesLoadingRetryAndImageDialog() {
+        val cookieStore = projectFile("src/main/java/io/legado/app/help/http/CookieStore.kt").readText()
+        val webViewModel = projectFile("src/main/java/io/legado/app/ui/browser/WebViewModel.kt").readText()
+        val webViewActivity = projectFile("src/main/java/io/legado/app/ui/browser/WebViewActivity.kt").readText()
+        val helper = projectFile("src/main/java/io/legado/app/ui/browser/WebViewVerificationHelper.kt").readText()
+        val codeDialog = projectFile("src/main/java/io/legado/app/ui/association/VerificationCodeDialog.kt").readText()
+        val codeMenu = projectFile("src/main/res/menu/verification_code.xml").readText()
+
+        assertTrue(cookieStore.substringAfter("override fun replaceCookie(").contains("CookieManager.removeSessionCookieKeys("))
+        assertTrue(helper.contains("LOADING"))
+        assertTrue(webViewModel.substringAfter("fun initData(").contains("onError: ((Throwable) -> Unit)? = null"))
+        assertTrue(webViewModel.substringAfter("fun initData(").contains("onError?.invoke("))
+        assertTrue(webViewActivity.contains("private fun loadInitialPage()"))
+        assertTrue(webViewActivity.substringAfter("private fun refresh()").substringBefore("private fun loadInitialPage()").contains("!hasLoadedInitialData"))
+        assertTrue(webViewActivity.substringAfter("private fun updateVerificationBanner(").contains("VerificationBannerState.LOADING"))
+        assertTrue(codeMenu.contains("menu_web_refresh"))
+        assertTrue(codeDialog.contains("R.id.menu_web_refresh"))
+        assertTrue(codeDialog.contains("EditorInfo.IME_ACTION_DONE"))
+        assertTrue(codeDialog.contains("R.string.verification_code_empty"))
+        assertTrue(codeDialog.contains("resource.config ?: Bitmap.Config.ARGB_8888"))
     }
 
     private fun stringNames(file: File): Set<String> {

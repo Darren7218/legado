@@ -174,4 +174,26 @@ class WebViewCookieSyncTest {
             CookieStore.cookieToMap(cookieStore["https://book.example.com"].orEmpty())
         )
     }
+
+    @Test
+    fun pruneCookieKeysRemovesOverriddenKeysWhilePreservingRemainingSessionCookies() {
+        assertEquals(
+            "sid=keep",
+            CookieManager.pruneCookieKeys(
+                "sid=keep; cf_clearance=stale; __cf_bm=stale2",
+                setOf("cf_clearance", "__cf_bm")
+            )
+        )
+        assertNull(
+            CookieManager.pruneCookieKeys(
+                "cf_clearance=stale",
+                setOf("cf_clearance")
+            )
+        )
+        assertEquals(
+            "sid=keep",
+            CookieManager.pruneCookieKeys("sid=keep", emptySet())
+        )
+        assertNull(CookieManager.pruneCookieKeys(null, setOf("cf_clearance")))
+    }
 }

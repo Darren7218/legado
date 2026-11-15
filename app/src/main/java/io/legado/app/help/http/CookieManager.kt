@@ -91,6 +91,27 @@ object CookieManager {
         CacheManager.putMemory("${domain}_session_cookie", ck)
     }
 
+    internal fun removeSessionCookieKeys(domain: String, keys: Collection<String>) {
+        if (keys.isEmpty()) return
+        val sessionCookie = getSessionCookie(domain) ?: return
+        val remaining = pruneCookieKeys(sessionCookie, keys.toSet())
+        if (remaining.isNullOrEmpty()) {
+            CacheManager.deleteMemory("${domain}_session_cookie")
+        } else if (remaining != sessionCookie) {
+            CacheManager.putMemory("${domain}_session_cookie", remaining)
+        }
+    }
+
+    internal fun pruneCookieKeys(rawCookie: String?, keysToRemove: Set<String>): String? {
+        if (rawCookie.isNullOrBlank() || keysToRemove.isEmpty()) {
+            return rawCookie?.takeIf { it.isNotBlank() }
+        }
+        val filtered = CookieStore.cookieToMap(rawCookie).apply {
+            keysToRemove.forEach { remove(it) }
+        }
+        return CookieStore.mapToCookie(filtered)
+    }
+
     fun mergeCookies(vararg cookies: String?): String? {
         val cookieMap = mergeCookiesToMap(*cookies)
         return CookieStore.mapToCookie(cookieMap)

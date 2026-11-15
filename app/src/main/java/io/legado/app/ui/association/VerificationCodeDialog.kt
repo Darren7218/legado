@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import com.bumptech.glide.load.DataSource
@@ -27,6 +28,7 @@ import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -61,6 +63,7 @@ class VerificationCodeDialog() : BaseDialogFragment(R.layout.dialog_verification
     }
 
     private var sourceOrigin: String? = null
+    private var imageUrl: String? = null
     private val verificationResultKey: String?
         get() = arguments?.getString("verificationResultKey")
 
@@ -71,10 +74,19 @@ class VerificationCodeDialog() : BaseDialogFragment(R.layout.dialog_verification
         toolBar.setBackgroundColor(primaryColor)
         toolBar.subtitle = arguments.getString("sourceName")
         sourceOrigin = arguments.getString("sourceOrigin")
-        val imageUrl = arguments.getString("imageUrl") ?: return@run
-        loadImage(imageUrl, sourceOrigin)
+        val resolvedImageUrl = arguments.getString("imageUrl") ?: return@run
+        imageUrl = resolvedImageUrl
+        loadImage(resolvedImageUrl, sourceOrigin)
         verificationCodeImageView.setOnClickListener {
-            showDialogFragment(PhotoDialog(imageUrl, sourceOrigin))
+            showDialogFragment(PhotoDialog(resolvedImageUrl, sourceOrigin))
+        }
+        verificationCode.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                submitVerificationCode()
+                true
+            } else {
+                false
+            }
         }
     }
 
@@ -111,7 +123,7 @@ class VerificationCodeDialog() : BaseDialogFragment(R.layout.dialog_verification
                     dataSource: DataSource,
                     isFirstResource: Boolean
                 ): Boolean {
-                    val bitmap = resource.copy(resource.config!!, true)
+                    val bitmap = resource.copy(resource.config ?: Bitmap.Config.ARGB_8888, true)
                     ImageProvider.put(url, bitmap) // 传给 PhotoDialog
                     return false
                 }
@@ -119,13 +131,27 @@ class VerificationCodeDialog() : BaseDialogFragment(R.layout.dialog_verification
             .into(binding.verificationCodeImageView)
     }
 
+    private fun submitVerificationCode() {
+        val verificationCode = binding.verificationCode.text?.toString()?.trim().orEmpty()
+        if (verificationCode.isEmpty()) {
+            toastOnUi(R.string.verification_code_empty)
+            return
+        }
+        SourceVerificationHelp.setResult(verificationResultKey, verificationCode)
+        dismiss()
+    }
+
     @SuppressLint("InflateParams")
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.menu_web_refresh -> {
+                imageUrl?.let { loadImage(it, sourceOrigin) }
+                return true
+            }
+
             R.id.menu_ok -> {
-                val verificationCode = binding.verificationCode.text.toString()
-                SourceVerificationHelp.setResult(verificationResultKey, verificationCode)
-                dismiss()
+                submitVerificationCode()
+                return true
             }
 
             R.id.menu_disable_source -> {

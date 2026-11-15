@@ -1887,4 +1887,5 @@
     <string name="verification_banner_failed_no_detail">Verification check failed. Finish any check on the page and try again.</string>
     <string name="verification_back_retry_hint">Verification failed; finish the check or press Back again to close</string>
     <string name="verification_done_action">Done</string>
+    <string name="verification_code_empty">Please enter the verification code</string>
 </resources>

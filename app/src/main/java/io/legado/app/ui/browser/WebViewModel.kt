@@ -42,6 +42,7 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
 
     fun initData(
         intent: Intent,
+        onError: ((Throwable) -> Unit)? = null,
         success: () -> Unit
     ) {
         execute {
@@ -81,6 +82,7 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
         }.onError {
             context.toastOnUi("error\n${it.localizedMessage}")
             it.printOnDebug()
+            onError?.invoke(it)
         }
     }
 

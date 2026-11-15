@@ -88,6 +88,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var isCloudflareChallenge = false
     private var verificationFailedOnce = false
     private var hasMainFrameLoadError = false
+    private var hasLoadedInitialData = false
     private var isFullScreen = false
     private var isWebFullscreen = false
     private var orientationBeforeWebFullscreen: Int? = null
@@ -104,10 +105,55 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private fun refresh() {
         verificationFailedOnce = false
         hasMainFrameLoadError = false
+        if (!hasLoadedInitialData) {
+            loadInitialPage()
+            return
+        }
         if (!viewModel.isSavingVerification) {
             updateVerificationBanner(VerificationBannerState.READY)
         }
         currentWebView.reload()
+    }
+
+    private fun loadInitialPage() {
+        viewModel.sourceVerificationEnable =
+            intent.getBooleanExtra("sourceVerificationEnable", false)
+        verificationFailedOnce = false
+        hasMainFrameLoadError = false
+        updateVerificationBanner(VerificationBannerState.LOADING)
+        viewModel.initData(
+            intent,
+            onError = { error ->
+                if (!isFinishing && !isDestroyed) {
+                    verificationFailedOnce = true
+                    updateVerificationBanner(
+                        VerificationBannerState.FAILED,
+                        formatVerificationError(error)
+                    )
+                }
+            }
+        ) {
+            if (isFinishing || isDestroyed) return@initData
+            hasLoadedInitialData = true
+            updateVerificationBanner(VerificationBannerState.READY)
+            val url = viewModel.baseUrl
+            val headerMap = viewModel.headerMap
+            val requestConfig = headerMap.toWebViewRequestConfig(AppConfig.userAgent)
+            initWebView(url, requestConfig.userAgent)
+            val html = viewModel.html
+            if (html.isNullOrEmpty()) {
+                currentWebView.loadUrl(url, requestConfig.additionalHeaders)
+            } else {
+                if (viewModel.localHtml) {
+                    viewModel.source?.let {
+                        val webJsExtensions = WebJsExtensions(it, this, currentWebView)
+                        currentWebView.addJavascriptInterface(webJsExtensions, nameJava)
+                    }
+                    currentWebView.addJavascriptInterface(WebCacheManager, nameCache)
+                }
+                currentWebView.loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
+            }
+        }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -138,26 +184,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
         binding.titleBar.title = intent.getStringExtra("title") ?: getString(R.string.loading)
         binding.titleBar.subtitle = intent.getStringExtra("sourceName")
-        viewModel.initData(intent) {
-            updateVerificationBanner(VerificationBannerState.READY)
-            val url = viewModel.baseUrl
-            val headerMap = viewModel.headerMap
-            val requestConfig = headerMap.toWebViewRequestConfig(AppConfig.userAgent)
-            initWebView(url, requestConfig.userAgent)
-            val html = viewModel.html
-            if (html.isNullOrEmpty()) {
-                currentWebView.loadUrl(url, requestConfig.additionalHeaders)
-            } else {
-                if (viewModel.localHtml) {
-                    viewModel.source?.let {
-                        val webJsExtensions = WebJsExtensions(it, this, currentWebView)
-                        currentWebView.addJavascriptInterface(webJsExtensions, nameJava)
-                    }
-                    currentWebView.addJavascriptInterface(WebCacheManager, nameCache)
-                }
-                currentWebView.loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
-            }
-        }
+        loadInitialPage()
         currentWebView.clearHistory()
         onBackPressedDispatcher.addCallback(this) {
             if (binding.customWebView.size > 0) { //网页全屏
@@ -404,11 +431,13 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             return
         }
         binding.llVerificationBar.visibility = View.VISIBLE
-        val verifying = state == VerificationBannerState.VERIFYING
-        binding.pbVerification.visibility = if (verifying) View.VISIBLE else View.GONE
-        binding.btnVerificationDone.isEnabled = !verifying
-        binding.btnVerificationDone.alpha = if (verifying) 0.5f else 1f
+        val busy = state == VerificationBannerState.LOADING ||
+            state == VerificationBannerState.VERIFYING
+        binding.pbVerification.visibility = if (busy) View.VISIBLE else View.GONE
+        binding.btnVerificationDone.isEnabled = !busy
+        binding.btnVerificationDone.alpha = if (busy) 0.5f else 1f
         binding.tvVerificationStatus.text = when (state) {
+            VerificationBannerState.LOADING -> getString(R.string.loading)
             VerificationBannerState.READY -> getString(R.string.verification_banner_ready)
             VerificationBannerState.CHALLENGE_ACTIVE ->
                 getString(R.string.verification_banner_challenge)

@@ -59,6 +59,10 @@ object CookieStore : CookieManagerInterface {
             return
         }
         setCookie(url, mergeCookie(url, cookie))
+        val updatedKeys = cookieToMap(cookie).keys
+        if (updatedKeys.isNotEmpty()) {
+            CookieManager.removeSessionCookieKeys(NetworkUtils.getSubDomain(url), updatedKeys)
+        }
     }
 
     internal fun restoreCookie(url: String, cookie: String) {

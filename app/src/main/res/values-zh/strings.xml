@@ -1774,4 +1774,5 @@
     <string name="verification_banner_failed_no_detail">验证结果确认失败，请在页面完成验证后重试。</string>
     <string name="verification_back_retry_hint">验证未通过：请完成验证后再试，或再次返回退出</string>
     <string name="verification_done_action">完成</string>
+    <string name="verification_code_empty">请输入验证码</string>
 </resources>
